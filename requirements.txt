@@ -2,8 +2,7 @@ fastapi
 uvicorn
 pydantic
 groq
-sentence-transformers
-numpy
+scikit-learn
 python-dotenv
 requests
 streamlit

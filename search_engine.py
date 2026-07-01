@@ -1,20 +1,18 @@
 import json
-import numpy as np
 import os
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-# global variables to cache data in memory so we don't reload on every request
+# global variables to cache everything in memory on startup
 CATALOG_DICT = {}
 CATALOG_LIST = []
-CATALOG_EMBEDDINGS = None
-MODEL = None
+CATALOG_TEXTS = []
+VECTORIZER = None
+TFIDF_MATRIX = None
 
-# load the catalog json file, strip dirty spaces from keys and values, and embed the texts
+# load the catalog, clean dirty keys/values, and build the tfidf index
 def load_and_clean_data():
-    global CATALOG_DICT, CATALOG_EMBEDDINGS, CATALOG_LIST, MODEL
-
-    # load the sentence transformer model for embedding
-    MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+    global CATALOG_DICT, CATALOG_LIST, CATALOG_TEXTS, VECTORIZER, TFIDF_MATRIX
 
     # check the catalog file is present before trying to open it
     if not os.path.exists("catalog.json"):
@@ -56,7 +54,7 @@ def load_and_clean_data():
     # reset our global caches before filling them
     CATALOG_DICT = {}
     CATALOG_LIST = []
-    texts_to_embed = []
+    CATALOG_TEXTS = []
 
     # build the catalog dict and the list of text strings to embed
     for item in cleaned_catalog:
@@ -68,46 +66,40 @@ def load_and_clean_data():
         CATALOG_DICT[str(entity_id)] = item
         CATALOG_LIST.append(item)
 
-        # combine name, description, and keys into one text blob for embedding
+        # combine name, description, and keys into one text blob for tfidf indexing
         name = item.get("name", "")
         description = item.get("description", "")
         keys = item.get("keys", [])
 
         keys_str = ", ".join(keys)
         text_blob = f"{name}. {description}. Keys: {keys_str}"
-        texts_to_embed.append(text_blob)
+        CATALOG_TEXTS.append(text_blob)
 
-    # encode all the text blobs into a numpy matrix of embeddings
-    if texts_to_embed:
-        CATALOG_EMBEDDINGS = MODEL.encode(texts_to_embed, convert_to_numpy=True)
+    # fit the tfidf vectorizer on all catalog texts and build the sparse matrix
+    # tfidf uses almost no memory compared to sentence-transformers (~5MB vs ~400MB)
+    if CATALOG_TEXTS:
+        VECTORIZER = TfidfVectorizer(ngram_range=(1, 2), stop_words="english")
+        TFIDF_MATRIX = VECTORIZER.fit_transform(CATALOG_TEXTS)
+        print(f"TF-IDF index built: {len(CATALOG_LIST)} assessments indexed.")
     else:
-        CATALOG_EMBEDDINGS = np.array([])
+        print("Warning: no catalog items to index.")
 
-# search the catalog using cosine similarity between query and product embeddings
-def search(query: str, top_k: int = 15):
-    global CATALOG_DICT, CATALOG_EMBEDDINGS, CATALOG_LIST, MODEL
+# search the catalog using tfidf cosine similarity against the query
+def search(query: str, top_k: int = 25):
+    global CATALOG_LIST, VECTORIZER, TFIDF_MATRIX
 
     # return empty list if catalog hasn't been loaded yet
-    if CATALOG_EMBEDDINGS is None or len(CATALOG_EMBEDDINGS) == 0:
+    if VECTORIZER is None or TFIDF_MATRIX is None:
         return []
 
-    # embed the user query into a vector
-    query_embedding = MODEL.encode([query], convert_to_numpy=True)[0]
+    # transform the query into the same tfidf vector space
+    query_vec = VECTORIZER.transform([query])
 
-    # calculate the L2 norm of all product embeddings and the query embedding
-    norms_prod = np.linalg.norm(CATALOG_EMBEDDINGS, axis=1)
-    norm_query = np.linalg.norm(query_embedding)
-
-    # replace zero norms with a tiny number to avoid division by zero
-    norms_prod[norms_prod == 0] = 1e-10
-    if norm_query == 0:
-        norm_query = 1e-10
-
-    # calculate cosine similarity using dot product divided by the norms
-    similarities = np.dot(CATALOG_EMBEDDINGS, query_embedding) / (norms_prod * norm_query)
+    # calculate cosine similarity between the query and all catalog texts
+    scores = cosine_similarity(query_vec, TFIDF_MATRIX).flatten()
 
     # sort by similarity descending and take the top_k indexes
-    top_indices = np.argsort(similarities)[::-1][:top_k]
+    top_indices = scores.argsort()[::-1][:top_k]
 
     # build the results list from the top matching catalog items
     results = []
