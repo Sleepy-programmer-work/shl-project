@@ -1,0 +1,19 @@
+# Ignore environment variables and API keys
+.env
+
+# Ignore testing and benchmarking scripts
+benchmark.py
+
+# Ignore README document as requested
+README.md
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.DS_Store

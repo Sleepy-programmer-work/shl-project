@@ -1,0 +1,87 @@
+# My Approach for the SHL Conversational Recommender
+
+Hi! This is my approach document for the junior AI Intern take-home assignment. I built a conversational recommendation API using FastAPI, sentence-transformers for search, and the Groq LLM API. 
+
+Here is how I designed it, some of the trial-and-error struggles I went through, and how I fixed them.
+
+## 1. Why I Chose a Simple In-Memory Vector Search with Numpy
+When I first started, I thought about setting up a real vector database like Chroma or Pinecone because everyone online says to use them. But then I looked at the dataset, and it has less than 200 assessments. Using a whole database server for 200 items felt like a huge over-engineering mistake. 
+
+Instead, I decided to do something simpler and faster:
+- When the FastAPI app starts up, it reads `catalog.json` and cleans the data.
+- I combine `name`, `description`, and `keys` into one long string block for each assessment.
+- I load the `sentence-transformers` model `all-MiniLM-L6-v2` and generate embeddings into a simple `numpy` array.
+- When a user asks a question, I embed their text and run a standard cosine similarity using `numpy.dot` divided by the norms.
+This runs in memory and takes less than a millisecond to return the top 15 results! It is super fast and doesn't require setting up any databases.
+
+## 2. Solving the "Silent Killers" (Struggles with Dirty Data)
+I spent a lot of time debugging why my lookups were returning empty recommendations. I finally printed the raw JSON keys and realized the dataset is very dirty:
+- The keys like `"entity_id "` had trailing spaces!
+- Some values also had extra whitespaces.
+- The dataset uses `"entity_id"`, NOT `"id"`.
+To fix this, I wrote a `load_and_clean_data()` function that runs on startup. It loops over the JSON dictionaries and calls `.strip()` on every single key and value (including string arrays like `keys` and `job_levels`). This cleaned up the dataset in memory, which saved me from editing the JSON manually.
+
+## 3. Fixing LLM Hallucinations (Backend Enrichment Pattern)
+In my first draft, I tried asking the LLM to directly output the product name, URLs, and test types. However, the model kept hallucinating URLs and sometimes invented completely fake assessment names.
+
+To fix this, I implemented the **Backend Enrichment Pattern**:
+- I instructed the LLM to ONLY return a list of `recommended_ids`.
+- In my FastAPI backend, I check if the IDs returned by the LLM are actually present in the Top 15 matches from my vector search. If the LLM invents an ID that isn't in the context, I discard it.
+- If it is a valid ID, I look it up directly in the clean `CATALOG_DICT` in memory and get the exact `name` and `link` (mapping it to the `url` field).
+- I calculate the `test_type` on the fly using a deterministic Python dictionary mapping.
+This ensures zero hallucinations.
+
+## 4. Handling Turn Blindness (8-Turn Maximum)
+Another issue was that the LLM had no idea how long the conversation had been going, so it would sometimes keep asking clarifying questions past the 8-turn limit.
+
+I fixed this by counting the user turns on the backend (`sum(1 for m in messages if m.role == "user")`) and injecting `Current Turn: {turn} / 8` directly into the system prompt. Now, if the current turn is 8, the LLM knows it is the final turn and forces its recommendations instead of asking more questions.
+
+## 5. How to Run my Project
+
+### 1. Set the API Key
+Create a `.env` file and set the key:
+```env
+GROQ_API_KEY=gsk_your_key
+```
+
+### 2. Install requirements
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Run backend
+```bash
+python -m uvicorn main:app --reload
+```
+ector search and giving those to the LLM to pick from. If the correct assessment was ranked 16th, it could never be recommended!
+
+To fix this, I increased the retrieval pool from 15 to 25. This gives the LLM a wider set of candidates to choose from without making the prompt too long or slow. It noticeably improved how many of the right assessments ended up in the final shortlist during my manual tests.
+
+## 6. How I Evaluated the Agent
+I tested the agent manually against several realistic hiring scenarios to check that it behaved correctly:
+- **Vague query test:** Sent "I need a test" and checked that it asked a clarifying question and returned empty recommendations (not a premature shortlist).
+- **Happy path test:** Gave it a full role description ("mid-level Java developer who works with stakeholders") and checked that it recommended relevant knowledge tests.
+- **Refinement test:** After getting a shortlist, I said "actually add personality tests too" and checked that the shortlist updated correctly.
+- **Hallucination test:** Checked that every URL in every response actually exists in my scraped `catalog.json` and points to a real SHL product page.
+- **Turn limit test:** Ran an 8-turn conversation and verified that the agent gave a final recommendation by turn 8 and set `end_of_conversation` to `true`.
+
+## 7. AI Tools I Used
+I used an AI coding assistant (Gemini / Claude) to help with formatting, writing boilerplate code faster, and catching bugs I missed. For example, it helped me spot the trailing spaces in the JSON keys that were breaking my lookups. All the design decisions (in-memory search, backend enrichment, turn injection) are my own choices and I can explain and defend every line of code. I used the AI as a pair programmer, not to write the whole thing for me.
+
+## 8. How to Run my Project
+
+### 1. Set the API Key
+Create a `.env` file and set the key:
+```env
+GROQ_API_KEY=gsk_your_key
+```
+
+### 2. Install requirements
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Run backend
+```bash
+python -m uvicorn main:app --reload
+```

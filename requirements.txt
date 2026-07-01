@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+groq
+sentence-transformers
+numpy
+python-dotenv
+requests
+streamlit
