@@ -55,7 +55,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-API_URL = "http://127.0.0.1:8000/chat"
+import os
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000")
+API_URL = f"{BACKEND_URL}/chat"
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
