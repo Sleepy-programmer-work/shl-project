@@ -10,9 +10,12 @@ When I first started, I thought about setting up a real vector database like Chr
 Instead, I decided to do something simpler and faster:
 - When the FastAPI app starts up, it reads `catalog.json` and cleans the data.
 - I combine `name`, `description`, and `keys` into one long string block for each assessment.
-- I load the `sentence-transformers` model `all-MiniLM-L6-v2` and generate embeddings into a simple `numpy` array.
-- When a user asks a question, I embed their text and run a standard cosine similarity using `numpy.dot` divided by the norms.
-This runs in memory and takes less than a millisecond to return the top 15 results! It is super fast and doesn't require setting up any databases.
+- I fit a `TfidfVectorizer` from scikit-learn on all the assessment texts, building a sparse TF-IDF matrix.
+- When a user asks a question, I transform the query into the same TF-IDF vector space and run cosine similarity against all catalog vectors.
+This runs in memory in under 1 millisecond, uses only ~5MB of RAM, and doesn't require setting up any databases.
+
+I originally used `sentence-transformers` (`all-MiniLM-L6-v2`) for semantic embeddings, but this caused the deployment to crash on Render's free tier with an **Out of Memory** error (the model alone used over 400MB of the 512MB limit). I switched to TF-IDF which solved the memory issue completely while still giving good retrieval quality for a small catalog of ~200 items.
+
 
 ## 2. Struggles with Dirty Data
 I spent a lot of time debugging why my lookups were returning empty recommendations. I finally printed the raw JSON keys and realized the dataset is very dirty:
