@@ -1,8 +1,8 @@
 # Ignore environment variables and API keys
 .env
 
-# Ignore testing and benchmarking scripts
-benchmark.py
+# Ignore generated/exported HTML artifacts
+approach_summary.html
 
 # Ignore README document as requested
 README.md
