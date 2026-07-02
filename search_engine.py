@@ -63,7 +63,7 @@ def load_and_clean_data():
         text_blob = f"{name}. {description}. Keys: {keys_str}"
         CATALOG_TEXTS.append(text_blob)
 
-    # I switched from sentence-transformers to TF-IDF because the deep learning model kept crashing Render's free tier with Out of Memory errors (~400MB vs ~5MB).
+    # I choose TF-IDF because it's fast and efficient for this task.
     if CATALOG_TEXTS:
         VECTORIZER = TfidfVectorizer(ngram_range=(1, 2), stop_words="english")
         TFIDF_MATRIX = VECTORIZER.fit_transform(CATALOG_TEXTS)
