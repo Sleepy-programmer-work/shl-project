@@ -3,10 +3,9 @@ import json
 from groq import Groq
 from typing import List, Dict
 
-# the groq model we use — fast and well within the 30s timeout
+# I chose llama-3.1-8b-instant because it's fast enough to comfortably stay under the 30s timeout limit.
 MODEL = "llama-3.1-8b-instant"
 
-# system prompt that tells the LLM exactly how to behave and what JSON to output
 SYSTEM_PROMPT_TEMPLATE = """You are an SHL Assessment Recommender Agent. Your goal is to help hiring managers find the right SHL assessments from the provided catalog.
 Current Turn: {turn} / 8
 
@@ -31,9 +30,7 @@ OUTPUT FORMAT (Strict JSON):
 {context}
 </available_catalog>"""
 
-# generate a response from the Groq LLM given the message history and top products
 def generate_response(messages: List[Dict[str, str]], top_products: List[Dict], turn: int):
-    # fetch the api key from environment — crash early if it's missing
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         return {
@@ -43,10 +40,8 @@ def generate_response(messages: List[Dict[str, str]], top_products: List[Dict], 
             "end_of_conversation": False
         }
 
-    # create the groq client using the api key
     client = Groq(api_key=api_key)
 
-    # format the top 15 products into readable lines for the system prompt context
     context_lines = []
     for p in top_products:
         keys_str = ", ".join(p.get("keys", []))
@@ -55,16 +50,13 @@ def generate_response(messages: List[Dict[str, str]], top_products: List[Dict], 
 
     context_string = "\n".join(context_lines)
 
-    # fill in the system prompt template with the current turn and catalog context
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(turn=turn, context=context_string)
 
-    # build the messages list with system prompt first, then the conversation history
     api_messages = [{"role": "system", "content": system_prompt}]
     for msg in messages:
         api_messages.append({"role": msg.get("role"), "content": msg.get("content")})
 
     try:
-        # call the groq api and request a strict json response
         response = client.chat.completions.create(
             model=MODEL,
             messages=api_messages,
@@ -72,11 +64,9 @@ def generate_response(messages: List[Dict[str, str]], top_products: List[Dict], 
             temperature=0.0
         )
 
-        # parse and return the json object from the response string
         response_json = json.loads(response.choices[0].message.content)
         return response_json
     except Exception as e:
-        # print the error and return a safe fallback so the API doesn't crash
         print(f"Groq API Error: {str(e)}")
         return {
             "thought_process": f"Error: {str(e)}",

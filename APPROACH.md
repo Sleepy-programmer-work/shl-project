@@ -29,7 +29,7 @@ In my first draft, I tried asking the LLM to directly output the product name, U
 
 To fix this, I implemented a pattern:
 - I instructed the LLM to ONLY return a list of `recommended_ids`.
-- In my FastAPI backend, I check if the IDs returned by the LLM are actually present in the Top 15 matches from my vector search. If the LLM invents an ID that isn't in the context, I discard it.
+- In my FastAPI backend, I check if the IDs returned by the LLM are actually present in the Top 25 matches from my vector search. If the LLM invents an ID that isn't in the context, I discard it.
 - If it is a valid ID, I look it up directly in the clean `CATALOG_DICT` in memory and get the exact `name` and `link` (mapping it to the `url` field).
 - I calculate the `test_type` on the fly using a deterministic Python dictionary mapping.
 This ensures zero hallucinations.
